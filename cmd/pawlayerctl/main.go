@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -85,10 +86,10 @@ func runtimePaths() (paths, error) {
 		stateDir = filepath.Join(home, ".local", "state")
 	}
 	logDir := filepath.Join(stateDir, "paw-layer")
-	if err := os.MkdirAll(runDir, 0o700); err != nil {
+	if err := ensureUserDir(runDir); err != nil {
 		return paths{}, err
 	}
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
+	if err := ensureUserDir(logDir); err != nil {
 		return paths{}, err
 	}
 	return paths{
@@ -98,7 +99,27 @@ func runtimePaths() (paths, error) {
 	}, nil
 }
 
+func ensureUserDir(path string) error {
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if runtime.GOOS == "darwin" && info.Sys() != nil {
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Geteuid()) {
+			return fmt.Errorf("%s is owned by uid %d, not current uid %d; fix with: sudo chown -R $(id -u):$(id -g) %q", path, stat.Uid, os.Geteuid(), path)
+		}
+	}
+	return nil
+}
+
 func start(configPath string, binaryPath string) error {
+	if runtime.GOOS == "darwin" && os.Geteuid() == 0 {
+		return fmt.Errorf("do not run paw-layer with sudo on macOS: GUI overlays must run in the logged-in user's WindowServer session")
+	}
+
 	p, err := runtimePaths()
 	if err != nil {
 		return err
@@ -123,9 +144,16 @@ func start(configPath string, binaryPath string) error {
 	cmd.Stderr = logFile
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if cwd, err := os.Getwd(); err == nil {
+		_, _ = fmt.Fprintf(logFile, "\n--- pawlayerctl start %s ---\ncwd=%s\ncommand=%s %s\n", time.Now().Format(time.RFC3339), cwd, cmd.Path, strings.Join(cmd.Args[1:], " "))
+	}
 
 	if err := cmd.Start(); err != nil {
 		return err
+	}
+	time.Sleep(300 * time.Millisecond)
+	if !processAlive(cmd.Process.Pid) {
+		return fmt.Errorf("paw-layer exited immediately; see log: %s", p.logFile)
 	}
 	if err := os.WriteFile(p.pidFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o600); err != nil {
 		_ = killProcessGroup(cmd.Process.Pid, syscall.SIGTERM)
