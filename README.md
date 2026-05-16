@@ -67,6 +67,58 @@ go build -o pawlayerctl ./cmd/pawlayerctl
 ./paw-layer run --config configs/default.yaml
 ```
 
+Or use the Makefile:
+
+```bash
+make build
+make start PLATFORM=linux   # configs/default.yaml
+make start PLATFORM=macos   # configs/macos.yaml
+make status
+make logs-follow
+make stop
+```
+
+## Make targets
+
+```bash
+# Build and check
+make build
+make test
+make validate PLATFORM=linux
+make validate PLATFORM=macos
+
+# Start/restart selected platform config
+make start PLATFORM=linux
+make start PLATFORM=macos
+make restart PLATFORM=linux
+make restart PLATFORM=macos
+
+# Convenience aliases
+make start-linux
+make start-macos
+make restart-linux
+make restart-macos
+
+# Runtime control
+make stop
+make status
+make logs
+make logs-follow
+
+# Foreground/debug
+make run PLATFORM=linux
+make run PLATFORM=macos
+make list-monitors
+make list-windows
+```
+
+Useful variables:
+
+```bash
+make start PLATFORM=macos CONFIG=configs/macos.yaml
+make install BINDIR=~/.local/bin
+```
+
 ## Commands
 
 ```bash
