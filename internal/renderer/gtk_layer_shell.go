@@ -235,10 +235,12 @@ func (r *GTKLayerShell) draw(cr *C.cairo_t) {
 		if !cat.Visible {
 			continue
 		}
-		if store != nil && store.Draw(cr, cat) {
-			continue
+		if store == nil || !store.Draw(cr, cat) {
+			drawPixelCat(cr, float64(cat.X), float64(cat.Y), cat.Scale, cat.Direction)
 		}
-		drawPixelCat(cr, float64(cat.X), float64(cat.Y), cat.Scale, cat.Direction)
+		if cat.Speech != "" {
+			drawSpeechBubble(cr, float64(cat.X), float64(cat.Y), cat.Speech)
+		}
 	}
 }
 
@@ -329,6 +331,36 @@ func (s *spriteStore) Draw(cr *C.cairo_t, cat CatRenderState) bool {
 	C.cairo_set_source_surface(cr, surface, C.double(-frame*pack.manifest.TileWidth), 0)
 	C.cairo_paint(cr)
 	return true
+}
+
+func drawSpeechBubble(cr *C.cairo_t, x, y float64, text string) {
+	if text == "" {
+		return
+	}
+	bubbleX := x + 8
+	bubbleY := y - 34
+	if bubbleY < 4 {
+		bubbleY = y + 36
+	}
+	width := float64(len(text))*7 + 18
+	height := 24.0
+
+	C.cairo_save(cr)
+	defer C.cairo_restore(cr)
+	C.cairo_set_source_rgba(cr, 1, 1, 1, 0.92)
+	C.cairo_rectangle(cr, C.double(bubbleX), C.double(bubbleY), C.double(width), C.double(height))
+	C.cairo_fill_preserve(cr)
+	C.cairo_set_source_rgba(cr, 0.08, 0.08, 0.08, 0.9)
+	C.cairo_set_line_width(cr, 1)
+	C.cairo_stroke(cr)
+	font := C.CString("sans")
+	defer C.free(unsafe.Pointer(font))
+	ctext := C.CString(text)
+	defer C.free(unsafe.Pointer(ctext))
+	C.cairo_select_font_face(cr, font, C.CAIRO_FONT_SLANT_NORMAL, C.CAIRO_FONT_WEIGHT_NORMAL)
+	C.cairo_set_font_size(cr, 12)
+	C.cairo_move_to(cr, C.double(bubbleX+9), C.double(bubbleY+16))
+	C.cairo_show_text(cr, ctext)
 }
 
 func drawPixelCat(cr *C.cairo_t, x, y, scale float64, direction string) {

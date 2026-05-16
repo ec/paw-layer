@@ -128,7 +128,7 @@ func (r *MacOSAppKit) Draw(ctx context.Context, frame Frame) error {
 	r.mu.Unlock()
 
 	if len(frame.Cats) == 0 {
-		C.pawlayer_macos_set_cat(C.uintptr_t(r.handle), 0, 0, 1, 1, 0)
+		C.pawlayer_macos_set_cat(C.uintptr_t(r.handle), 0, 0, 1, 1, 0, nil)
 		return nil
 	}
 	cat := frame.Cats[0]
@@ -140,14 +140,19 @@ func (r *MacOSAppKit) Draw(ctx context.Context, frame Frame) error {
 	if cat.Visible {
 		visible = 1
 	}
+	var speech *C.char
+	if cat.Speech != "" {
+		speech = C.CString(cat.Speech)
+		defer C.free(unsafe.Pointer(speech))
+	}
 	if sprite, ok := r.spriteFor(cat); ok {
 		path := C.CString(sprite.path)
 		defer C.free(unsafe.Pointer(path))
-		C.pawlayer_macos_set_sprite(C.uintptr_t(r.handle), path, C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(sprite.tileWidth), C.int(sprite.tileHeight), C.int(sprite.frame), C.int(directionRight), C.int(visible))
+		C.pawlayer_macos_set_sprite(C.uintptr_t(r.handle), path, C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(sprite.tileWidth), C.int(sprite.tileHeight), C.int(sprite.frame), C.int(directionRight), C.int(visible), speech)
 		return nil
 	}
 
-	C.pawlayer_macos_set_cat(C.uintptr_t(r.handle), C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(directionRight), C.int(visible))
+	C.pawlayer_macos_set_cat(C.uintptr_t(r.handle), C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(directionRight), C.int(visible), speech)
 	return nil
 }
 

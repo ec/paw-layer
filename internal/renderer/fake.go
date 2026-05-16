@@ -20,7 +20,7 @@ func (r *Fake) Init(ctx context.Context, cfg Config) error {
 
 func (r *Fake) Draw(ctx context.Context, frame Frame) error {
 	for _, cat := range frame.Cats {
-		r.log.DebugContext(ctx, "renderer.draw_cat", "id", cat.ID, "x", cat.X, "y", cat.Y, "sprite", cat.Sprite, "direction", cat.Direction)
+		r.log.DebugContext(ctx, "renderer.draw_cat", "id", cat.ID, "x", cat.X, "y", cat.Y, "sprite", cat.Sprite, "direction", cat.Direction, "speech", cat.Speech)
 	}
 	return nil
 }

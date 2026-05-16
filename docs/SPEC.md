@@ -30,9 +30,9 @@ Hyprland is the initial target because it exposes JSON state and IPC through UNI
 ### v0.2
 
 - read Hyprland window geometry
-- cat can sit on active window top edge
+- cat can eventually sit on active window top edge; current runtime keeps it on the bottom edge
 - cat avoids cursor
-- cat hides on fullscreen
+- cat fullscreen handling is configurable/future work; current runtime keeps the cat visible
 - multiple cats
 
 ### v0.3
@@ -147,7 +147,7 @@ MVP is ready when:
 - cat walks around
 - cat changes idle/walk/sleep animation
 - cat can sit on active window
-- cat hides during fullscreen
+- fullscreen behavior is defined; current runtime keeps the cat visible during fullscreen
 - config controls speed/scale/sprite path
 
 ## References

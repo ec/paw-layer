@@ -45,24 +45,24 @@ The macOS backend should behave analogously to Linux, but use native Apple APIs:
 - input behavior: `ignoresMouseEvents = true`
 - monitor geometry: native CoreGraphics display bounds
 - cursor position: native CoreGraphics through cgo
-- active/frontmost window geometry: Accessibility API and/or `CGWindowList`; current fallback uses System Events and requires Accessibility permission
-- fullscreen detection: window/screen state from Accessibility/CoreGraphics where available
+- active/frontmost window geometry: current cached asynchronous System Events fallback; direct Accessibility API / `CGWindowList` integration is future work
+- fullscreen detection: planned through Accessibility/CoreGraphics; fullscreen hiding is currently disabled in shared behavior
 
 Current macOS MVP status:
 
 - `renderer.backend: macos-appkit` creates a native transparent click-through AppKit overlay.
 - Do not run it with `sudo`: macOS GUI overlays must run in the logged-in user's WindowServer session.
 - The AppKit renderer draws PNG sprite packs from the shared manifest format; it falls back to the built-in pixel cat if assets are unavailable.
-- The desktop provider uses AppleScript fallbacks for initial behavior parity, then should be replaced with direct CoreGraphics/Accessibility calls.
+- The desktop provider uses native CoreGraphics for cursor and monitor state. Active-window geometry still uses a cached asynchronous System Events fallback and may require Accessibility permission.
 - macOS builds with `CGO_ENABLED=1` are required for the native AppKit renderer. `CGO_ENABLED=0` builds keep command compatibility but cannot run the native renderer.
 
 Expected user-facing behavior should match Linux:
 
 - cat walks on the screen frame
-- cat sits on the active window
+- cat currently stays on the bottom screen edge; active-window perching is temporarily disabled
 - cat avoids the cursor
 - cat sleeps/wakes based on cursor inactivity
-- cat hides for fullscreen windows
+- cat currently stays visible for fullscreen windows
 - sprite packs/config stay shared
 
 ## Development rule

@@ -73,7 +73,6 @@ func (a *App) runLoop(ctx context.Context) error {
 	}
 
 	currentMonitor := monitor
-	var activeWindow *desktop.Window
 	var cursor *desktop.Cursor
 	var lastCursor *desktop.Cursor
 	lastCursorMove := time.Now()
@@ -87,6 +86,8 @@ func (a *App) runLoop(ctx context.Context) error {
 	wanderActive := false
 	wanderTarget := physics.Vec2{}
 	nextWanderBreak := time.Now().Add(randomDuration(rng, 12*time.Second, 24*time.Second))
+	nextMeow := time.Now().Add(randomDuration(rng, 10*time.Second, 22*time.Second))
+	meowUntil := time.Time{}
 	wakeUntil := time.Time{}
 	wasSleeping := false
 	sleepRoutineActive := false
@@ -135,7 +136,6 @@ func (a *App) runLoop(ctx context.Context) error {
 				if err != nil {
 					a.log.DebugContext(ctx, "desktop.active_window_unavailable", "error", err)
 				} else {
-					activeWindow = window
 					if window != nil && !transition.active {
 						if nextMonitor, ok := a.monitorForWindow(ctx, *window); ok && nextMonitor.Name != currentMonitor.Name {
 							transition = a.newMonitorTransition(currentMonitor, nextMonitor, miso.Position, catCfg.Scale, boundsWidth)
@@ -187,34 +187,53 @@ func (a *App) runLoop(ctx context.Context) error {
 					avoidUntil = time.Time{}
 				}
 			} else if wanderActive {
-				if a.moveAlongScreenFrame(dt, &miso, wanderTarget, currentMonitor, viewportHeight, bottomInset, catCfg.Scale, boundsWidth, catCfg.Speed*0.75, false) {
+				if miso.MoveTowardWithSpeed(dt, wanderTarget, catCfg.Speed*0.75, false) {
+					miso.Position.Y = groundY(viewportHeight, catCfg.Scale, bottomInset)
+					miso.State = cat.StateSit
+					miso.Animation = "sit"
 					wanderActive = false
 					nextWanderBreak = now.Add(randomDuration(rng, 12*time.Second, 24*time.Second))
 				}
-			} else if target, ok, fullscreen := a.windowTarget(activeWindow, currentMonitor, catCfg.Scale, boundsWidth); fullscreen {
-				visible = false
-				miso.Hide()
-			} else if ok {
-				a.moveAlongScreenFrame(dt, &miso, target, currentMonitor, viewportHeight, bottomInset, catCfg.Scale, boundsWidth, catCfg.Speed, true)
-				if miso.State == cat.StateSit {
-					a.lookAtCursor(cursor, currentMonitor, &miso, catCfg.Scale)
-					if now.After(nextWanderBreak) {
-						wanderTarget = a.wanderBreakTarget(rng, miso.Position, boundsWidth, currentMonitor, catCfg.Scale)
-						wanderActive = true
-					}
-					if now.After(nextMicroAction) {
-						microAnimation = randomMicroAnimation(rng)
-						microActionUntil = now.Add(700 * time.Millisecond)
-						nextMicroAction = now.Add(randomDuration(rng, 4*time.Second, 9*time.Second))
-					}
-					if now.Before(microActionUntil) {
-						miso.Animation = microAnimation
-					}
+			} else if a.awayFromBottom(miso.Position, viewportHeight, bottomInset, catCfg.Scale) {
+				returnTarget := physics.Vec2{X: clampFloat(miso.Position.X, 0, boundsWidth), Y: groundY(viewportHeight, catCfg.Scale, bottomInset)}
+				if miso.MoveTowardWithSpeed(dt, returnTarget, catCfg.Speed, false) {
+					miso.State = cat.StateSit
+					miso.Animation = "sit"
 				}
 			} else {
-				miso.Update(dt, boundsWidth)
+				miso.Position.Y = groundY(viewportHeight, catCfg.Scale, bottomInset)
+				miso.Velocity = physics.Vec2{}
+				miso.State = cat.StateSit
+				miso.Animation = "sit"
+				a.lookAtCursor(cursor, currentMonitor, &miso, catCfg.Scale)
+				if now.After(nextWanderBreak) {
+					wanderTarget = a.bottomWanderTarget(rng, miso.Position, boundsWidth, viewportHeight, bottomInset, catCfg.Scale)
+					wanderActive = true
+				}
+				if now.After(nextMicroAction) {
+					microAnimation = randomMicroAnimation(rng)
+					microActionUntil = now.Add(700 * time.Millisecond)
+					nextMicroAction = now.Add(randomDuration(rng, 4*time.Second, 9*time.Second))
+				}
+				if now.Before(microActionUntil) && !wanderActive {
+					miso.Animation = microAnimation
+				}
 			}
 			frameIndex++
+
+			speech := ""
+			if miso.State == cat.StateSleep {
+				meowUntil = time.Time{}
+				nextMeow = now.Add(randomDuration(rng, 18*time.Second, 36*time.Second))
+			} else {
+				if now.After(nextMeow) {
+					meowUntil = now.Add(1800 * time.Millisecond)
+					nextMeow = now.Add(randomDuration(rng, 18*time.Second, 36*time.Second))
+				}
+				if now.Before(meowUntil) {
+					speech = "meow"
+				}
+			}
 
 			if err := a.renderer.Draw(ctx, renderer.Frame{Cats: []renderer.CatRenderState{{
 				ID:         miso.ID,
@@ -226,6 +245,7 @@ func (a *App) runLoop(ctx context.Context) error {
 				Frame:      frameIndex / 4,
 				Direction:  string(miso.Direction),
 				Visible:    visible,
+				Speech:     speech,
 			}}}); err != nil {
 				return err
 			}
@@ -496,16 +516,29 @@ func (a *App) lookAtCursor(cursor *desktop.Cursor, monitor desktop.Monitor, c *c
 	}
 }
 
-func (a *App) wanderBreakTarget(rng *rand.Rand, position physics.Vec2, boundsWidth float64, monitor desktop.Monitor, scale float64) physics.Vec2 {
-	distance := 50 + rng.Float64()*120
-	if rng.Intn(2) == 0 {
-		distance = -distance
+func (a *App) bottomWanderTarget(rng *rand.Rand, position physics.Vec2, boundsWidth float64, viewportHeight int, bottomInset float64, scale float64) physics.Vec2 {
+	if boundsWidth <= 0 {
+		return physics.Vec2{X: 0, Y: groundY(viewportHeight, scale, bottomInset)}
 	}
-	maxY := float64(monitor.Height) - spriteHeight(scale)
+	// Pick targets across the full bottom edge, not just short local strolls.
+	// Bias away from the current side so a wander usually crosses a meaningful
+	// part of the screen.
+	leftBand := boundsWidth * 0.25
+	rightBand := boundsWidth * 0.75
+	targetX := rng.Float64() * boundsWidth
+	if position.X < boundsWidth/2 {
+		targetX = rightBand + rng.Float64()*(boundsWidth-rightBand)
+	} else {
+		targetX = rng.Float64() * leftBand
+	}
 	return physics.Vec2{
-		X: clampFloat(position.X+distance, 0, boundsWidth),
-		Y: clampFloat(position.Y+rng.Float64()*24-12, 0, maxY),
+		X: clampFloat(targetX, 0, boundsWidth),
+		Y: groundY(viewportHeight, scale, bottomInset),
 	}
+}
+
+func (a *App) awayFromBottom(position physics.Vec2, viewportHeight int, bottomInset float64, scale float64) bool {
+	return math.Abs(position.Y-groundY(viewportHeight, scale, bottomInset)) > 5
 }
 
 func randomMicroAnimation(rng *rand.Rand) string {

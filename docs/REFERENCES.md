@@ -64,6 +64,6 @@ Potentially useful later:
 Keep the core product narrower than both references:
 
 1. Hyprland-native desktop cats first.
-2. Strong compositor/window behavior: sit, peek, hide on fullscreen, react to cursor.
+2. Strong compositor/window behavior: sit, peek, handle fullscreen intentionally, react to cursor.
 3. Theme/sprite format early enough that art can evolve independently.
 4. Optional integrations later; no AI assistant feature in the core MVP.

@@ -18,6 +18,7 @@ typedef struct {
 @property(nonatomic, assign) uintptr_t handle;
 @property(nonatomic, assign) PawLayerCatState cat;
 @property(nonatomic, copy) NSString *spritePath;
+@property(nonatomic, copy) NSString *speech;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSImage *> *imageCache;
 @end
 
@@ -69,6 +70,7 @@ typedef struct {
             NSRect src = NSMakeRect(cat.frame * cat.tile_width, 0, cat.tile_width, cat.tile_height);
             [image drawInRect:dst fromRect:src operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:nil];
             [NSGraphicsContext restoreGraphicsState];
+            [self drawSpeechIfNeededAtX:x y:y];
             return;
         }
     }
@@ -99,6 +101,33 @@ typedef struct {
     rect(9, 7, 1, 1, dark);
     rect(13, 7, 1, 1, dark);
     rect(11, 9, 1, 1, dark);
+    [self drawSpeechIfNeededAtX:x y:y];
+}
+
+- (void)drawSpeechIfNeededAtX:(CGFloat)x y:(CGFloat)y {
+    if (self.speech == nil || [self.speech length] == 0) {
+        return;
+    }
+    NSDictionary *attrs = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:12],
+        NSForegroundColorAttributeName: [NSColor colorWithCalibratedWhite:0.08 alpha:1.0],
+    };
+    NSSize textSize = [self.speech sizeWithAttributes:attrs];
+    CGFloat bubbleW = textSize.width + 18;
+    CGFloat bubbleH = 24;
+    CGFloat bubbleX = x + 8;
+    CGFloat bubbleY = y - 34;
+    if (bubbleY < 4) {
+        bubbleY = y + 36;
+    }
+    NSRect bubble = NSMakeRect(bubbleX, bubbleY, bubbleW, bubbleH);
+    [[NSColor colorWithCalibratedWhite:1.0 alpha:0.92] setFill];
+    NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:bubble xRadius:5 yRadius:5];
+    [path fill];
+    [[NSColor colorWithCalibratedWhite:0.08 alpha:0.9] setStroke];
+    [path setLineWidth:1];
+    [path stroke];
+    [self.speech drawAtPoint:NSMakePoint(bubbleX + 9, bubbleY + 5) withAttributes:attrs];
 }
 
 @end
@@ -181,7 +210,8 @@ int pawlayer_macos_run(uintptr_t handle, int initial_width, int initial_height) 
     return 0;
 }
 
-void pawlayer_macos_set_cat(uintptr_t handle, double x, double y, double scale, int direction_right, int visible) {
+void pawlayer_macos_set_cat(uintptr_t handle, double x, double y, double scale, int direction_right, int visible, const char *speech) {
+    NSString *speechText = speech != NULL ? [NSString stringWithUTF8String:speech] : nil;
     dispatch_async(dispatch_get_main_queue(), ^{
         PawLayerAppDelegate *delegate = pawlayer_delegates()[@(handle)];
         if (delegate == nil || delegate.view == nil) {
@@ -199,12 +229,14 @@ void pawlayer_macos_set_cat(uintptr_t handle, double x, double y, double scale, 
         };
         delegate.view.cat = cat;
         delegate.view.spritePath = nil;
+        delegate.view.speech = speechText;
         [delegate.view setNeedsDisplay:YES];
     });
 }
 
-void pawlayer_macos_set_sprite(uintptr_t handle, const char *path, double x, double y, double scale, int tile_width, int tile_height, int frame, int direction_right, int visible) {
+void pawlayer_macos_set_sprite(uintptr_t handle, const char *path, double x, double y, double scale, int tile_width, int tile_height, int frame, int direction_right, int visible, const char *speech) {
     NSString *spritePath = path != NULL ? [NSString stringWithUTF8String:path] : nil;
+    NSString *speechText = speech != NULL ? [NSString stringWithUTF8String:speech] : nil;
     dispatch_async(dispatch_get_main_queue(), ^{
         PawLayerAppDelegate *delegate = pawlayer_delegates()[@(handle)];
         if (delegate == nil || delegate.view == nil) {
@@ -222,6 +254,7 @@ void pawlayer_macos_set_sprite(uintptr_t handle, const char *path, double x, dou
         };
         delegate.view.cat = cat;
         delegate.view.spritePath = spritePath;
+        delegate.view.speech = speechText;
         [delegate.view setNeedsDisplay:YES];
     });
 }

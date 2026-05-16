@@ -40,4 +40,5 @@ type CatRenderState struct {
 	Frame      int
 	Direction  string
 	Visible    bool
+	Speech     string
 }

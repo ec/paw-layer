@@ -1,21 +1,21 @@
 # paw-layer
 
-Pixel desktop cats for Hyprland / Wayland.
+Pixel desktop cats for Linux/Hyprland and macOS.
 
-`paw-layer` is a small Go desktop companion app. A pixel cat lives in a transparent click-through layer-shell overlay, follows the active Hyprland window, sits on it, reacts to the cursor, sleeps after inactivity, and can move between monitors.
+`paw-layer` is a small Go desktop companion app. A pixel cat lives in a transparent click-through native overlay, follows the active window, sits on it, reacts to the cursor, sleeps after inactivity, and can move between monitors.
 
 ![paw-layer pixel cat screenshot](docs/images/paw-layer-screenshot.png)
 
-> Status: early MVP / technical playground. Linux + Hyprland only for now.
+> Status: early MVP / technical playground. Linux + Hyprland is the primary target; macOS has an experimental native AppKit/CoreGraphics backend.
 
 ## Features
 
-- Transparent GTK4 + `gtk4-layer-shell` overlay
+- Native transparent overlay: GTK4 + `gtk4-layer-shell` on Linux/Hyprland, AppKit on macOS
 - Click-through input region, including after monitor switches
 - PNG spritesheet renderer with multiple sprite packs
-- Active-window tracking via `hyprctl`
-- Cat sits on the active window top edge
-- Cat hides when the active window is fullscreen
+- Active-window tracking via `hyprctl` on Hyprland and System Events fallback on macOS
+- Cat currently lives on the bottom screen edge; active-window climbing is temporarily disabled
+- Cat currently stays visible for fullscreen windows
 - Cursor avoidance with hysteresis
 - Sleep routine after cursor inactivity
 - Wake/startle, blink, tail-flick, and short wander micro-actions
@@ -25,18 +25,29 @@ Pixel desktop cats for Hyprland / Wayland.
 
 ## Requirements
 
+Common:
+
 - Go 1.25+
+- `pkg-config`
+
+Linux / Hyprland:
+
 - Hyprland
 - `hyprctl`
 - GTK4 development files
 - `gtk4-layer-shell` development files
-- `pkg-config`
 
 On Arch Linux / Omarchy-like systems:
 
 ```bash
 sudo pacman -S go gtk4 gtk4-layer-shell pkgconf
 ```
+
+macOS:
+
+- Xcode Command Line Tools
+- cgo enabled for native AppKit/CoreGraphics builds
+- Accessibility permission may be required for active-window geometry
 
 ## Quick start
 
@@ -59,13 +70,17 @@ go build -o pawlayerctl ./cmd/pawlayerctl
 ## Commands
 
 ```bash
-# Run the cat in the foreground
+# Run the cat in the foreground on Linux / Hyprland
 go run ./cmd/paw-layer run --config configs/default.yaml
+
+# Run the cat in the foreground on macOS
+go run ./cmd/paw-layer run --config configs/macos.yaml
 
 # Validate config
 go run ./cmd/paw-layer validate-config --config configs/default.yaml
+go run ./cmd/paw-layer validate-config --config configs/macos.yaml
 
-# Inspect Hyprland state
+# Inspect native desktop state
 go run ./cmd/paw-layer list-monitors
 go run ./cmd/paw-layer list-windows
 ```
@@ -77,8 +92,11 @@ go run ./cmd/paw-layer list-windows
 `pawlayerctl` is a small process-control utility for daily use:
 
 ```bash
-# Start in the background
+# Start in the background on Linux / Hyprland
 pawlayerctl start --config configs/default.yaml
+
+# Start in the background on macOS
+pawlayerctl start --config configs/macos.yaml
 
 # Check state
 pawlayerctl status
@@ -101,9 +119,13 @@ Runtime files:
 
 By default `pawlayerctl start` looks for `paw-layer` next to itself, then in `PATH`, then as `./paw-layer`. In a source checkout it can fall back to `go run ./cmd/paw-layer ...`. Use `--binary /path/to/paw-layer` to force a specific binary.
 
+On macOS, do not run `pawlayerctl` with `sudo`: AppKit overlays must run inside the logged-in user's WindowServer session. If a previous sudo run created root-owned state files, fix ownership with `sudo chown -R "$(id -u):$(id -g)" ~/.local/state/paw-layer`.
+
 ## Configuration
 
-Default config: [`configs/default.yaml`](configs/default.yaml)
+Default Linux/Hyprland config: [`configs/default.yaml`](configs/default.yaml)
+
+macOS config: [`configs/macos.yaml`](configs/macos.yaml)
 
 Important options:
 
@@ -178,8 +200,9 @@ cmd/paw-layer/            CLI entrypoint
 internal/app/             main loop and behavior orchestration
 internal/cat/             cat state and movement primitives
 internal/hyprland/        hyprctl-backed desktop state
-internal/desktop/         monitor/window/cursor models
-internal/renderer/        renderer protocol + GTK layer-shell backend
+internal/platform/        OS/compositor backend selection and native providers
+internal/desktop/         monitor/window/cursor models + provider interface
+internal/renderer/        renderer protocol + GTK/AppKit/native backends
 internal/assets/          sprite manifest loading
 internal/physics/         vector helpers
 assets/cats/              sprite packs
@@ -192,7 +215,7 @@ Platform / renderer design:
 - Go core owns behavior and state.
 - Native platform backends expose desktop state through `desktop.Provider`.
 - Linux currently uses Hyprland/`hyprctl` plus GTK4 layer-shell.
-- macOS support is planned as an AppKit/CoreGraphics backend; see [`docs/PLATFORMS.md`](docs/PLATFORMS.md).
+- macOS uses AppKit for rendering, CoreGraphics for cursor/monitor state, and System Events as the current active-window fallback; see [`docs/PLATFORMS.md`](docs/PLATFORMS.md).
 - Renderers are intentionally dumb: draw current frame, switch monitor when supported, report viewport.
 - GTK integration uses a small direct C bridge instead of gotk4 to keep generated cgo noise and dependencies low.
 
@@ -204,15 +227,19 @@ Per tick, behavior roughly resolves as:
 2. sleep routine / wake animation
 3. cursor avoidance
 4. random wander break
-5. active-window fullscreen hide
-6. frame-path movement to active window and sit
-7. bottom-edge wander fallback
+5. return to bottom edge if cursor avoidance pushed the cat away
+6. bottom-edge wander fallback
+7. periodic visual `meow` speech bubble
+
+Active-window climbing and fullscreen hiding are currently disabled; the cat stays on the bottom edge and remains visible for fullscreen windows.
 
 ## Known limitations
 
 - Multi-monitor movement is not truly continuous across outputs. The cat walks to the edge, the layer surface switches monitor, then the cat enters from the corresponding edge.
 - True seamless cross-monitor walking likely needs one layer-shell surface per monitor or a different renderer strategy.
 - Hyprland state currently uses polling + `hyprctl`; direct IPC/event sockets are future work.
+- Active-window climbing/perching is temporarily disabled while the bottom-edge lifecycle is being tuned.
+- macOS active-window tracking currently uses a cached asynchronous System Events fallback; direct Accessibility/CoreGraphics window tracking is future work.
 - The config parser is hand-rolled and minimal.
 - Sprite art is prototype-quality pixel art.
 - No packaging yet.
@@ -246,7 +273,7 @@ Later:
 - multiple cats
 - hot config reload
 - persisted position/monitor state
-- tray / `paw-layerctl`
+- tray / richer `pawlayerctl` controls
 - packaging / AUR
 
 ## Contributing
@@ -270,7 +297,7 @@ go run ./cmd/paw-layer validate-config --config configs/default.yaml
 
 ## Security / privacy
 
-`paw-layer` reads local Hyprland state via `hyprctl` and renders a local overlay. It does not require network access at runtime.
+`paw-layer` reads local desktop state (`hyprctl` on Hyprland; native CoreGraphics plus System Events fallback on macOS) and renders a local overlay. It does not require network access at runtime.
 
 ## License
 
