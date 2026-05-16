@@ -72,6 +72,8 @@ func runApp(configPath string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	log.Info("app.starting", "backend", cfg.Renderer.Backend, "pid", os.Getpid())
+
 	desktopProvider, err := platform.NewDesktopProvider(cfg, log)
 	if err != nil {
 		return err
@@ -81,6 +83,7 @@ func runApp(configPath string) error {
 	if err != nil {
 		return err
 	}
+	log.Info("app.renderer_created", "backend", cfg.Renderer.Backend)
 
 	if err := app.New(cfg, desktopProvider, r, log).Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return err

@@ -51,6 +51,7 @@ The macOS backend should behave analogously to Linux, but use native Apple APIs:
 Current macOS MVP status:
 
 - `renderer.backend: macos-appkit` creates a native transparent click-through AppKit overlay.
+- Do not run it with `sudo`: macOS GUI overlays must run in the logged-in user's WindowServer session.
 - The first renderer draws the built-in fallback pixel cat; PNG sprite pack rendering is still Linux-only.
 - The desktop provider uses AppleScript fallbacks for initial behavior parity, then should be replaced with direct CoreGraphics/Accessibility calls.
 - macOS builds with `CGO_ENABLED=1` are required for the native AppKit renderer. `CGO_ENABLED=0` builds keep command compatibility but cannot run the native renderer.

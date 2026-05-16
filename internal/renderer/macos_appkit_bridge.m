@@ -81,6 +81,7 @@ typedef struct {
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     (void)notification;
+    NSLog(@"paw-layer: applicationDidFinishLaunching");
 
     NSScreen *screen = [NSScreen mainScreen];
     NSRect frame = screen != nil ? [screen frame] : NSMakeRect(0, 0, self.initialWidth > 0 ? self.initialWidth : 800, self.initialHeight > 0 ? self.initialHeight : 600);
@@ -93,10 +94,12 @@ typedef struct {
     [self.window setOpaque:NO];
     [self.window setBackgroundColor:[NSColor clearColor]];
     [self.window setIgnoresMouseEvents:YES];
-    [self.window setLevel:NSFloatingWindowLevel];
+    [self.window setHasShadow:NO];
+    [self.window setLevel:NSScreenSaverWindowLevel];
     [self.window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
                                        NSWindowCollectionBehaviorFullScreenAuxiliary |
-                                       NSWindowCollectionBehaviorStationary];
+                                       NSWindowCollectionBehaviorStationary |
+                                       NSWindowCollectionBehaviorIgnoresCycle];
     [self.window setReleasedWhenClosed:NO];
 
     self.view = [[PawLayerView alloc] initWithFrame:NSMakeRect(0, 0, frame.size.width, frame.size.height)];
@@ -105,6 +108,7 @@ typedef struct {
     self.view.layer.backgroundColor = [[NSColor clearColor] CGColor];
     [self.window setContentView:self.view];
     [self.window orderFrontRegardless];
+    NSLog(@"paw-layer: overlay window ordered front %.0fx%.0f", frame.size.width, frame.size.height);
 
     pawlayerMacOSReady(self.handle, (int)frame.size.width, (int)frame.size.height);
 }
