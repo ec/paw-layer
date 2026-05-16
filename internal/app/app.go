@@ -263,9 +263,9 @@ func (a *App) windowTarget(window *desktop.Window, monitor desktop.Monitor, scal
 	if window == nil || window.Address == "" {
 		return physics.Vec2{}, false, false
 	}
-	if window.Fullscreen {
-		return physics.Vec2{}, false, true
-	}
+	// Do not hide on fullscreen for now. Some native backends cannot report
+	// fullscreen state reliably yet, and the current product direction is to
+	// keep the cat visible while macOS support is being brought up.
 	if window.Width <= 0 || window.Height <= 0 {
 		return physics.Vec2{}, false, false
 	}
