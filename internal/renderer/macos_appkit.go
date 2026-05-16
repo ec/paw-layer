@@ -24,7 +24,6 @@ type MacOSAppKit struct {
 
 	ready chan error
 	done  chan struct{}
-	once  sync.Once
 
 	handle uintptr
 
@@ -52,15 +51,61 @@ func NewMacOSAppKit(log *slog.Logger) *MacOSAppKit {
 }
 
 func (r *MacOSAppKit) Init(ctx context.Context, cfg Config) error {
-	r.once.Do(func() {
-		go r.runAppKit(cfg.InitialWidth, cfg.InitialHeight)
-	})
+	return fmt.Errorf("macOS AppKit renderer must run through RunMain")
+}
+
+func (r *MacOSAppKit) RunMain(ctx context.Context, cfg Config, runApp func(context.Context) error) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	defer close(r.done)
+	defer macOSRegistry.Delete(r.handle)
+
+	appCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		select {
+		case err := <-r.ready:
+			if err != nil {
+				errCh <- err
+				cancel()
+				C.pawlayer_macos_quit(C.uintptr_t(r.handle))
+				return
+			}
+		case <-appCtx.Done():
+			errCh <- appCtx.Err()
+			return
+		}
+
+		if err := runApp(appCtx); err != nil {
+			errCh <- err
+		} else {
+			errCh <- nil
+		}
+		cancel()
+		C.pawlayer_macos_quit(C.uintptr_t(r.handle))
+	}()
+
+	go func() {
+		<-appCtx.Done()
+		C.pawlayer_macos_quit(C.uintptr_t(r.handle))
+	}()
+
+	r.log.Info("renderer.macos_appkit_run_main", "width", cfg.InitialWidth, "height", cfg.InitialHeight)
+	code := int(C.pawlayer_macos_run(C.uintptr_t(r.handle), C.int(cfg.InitialWidth), C.int(cfg.InitialHeight)))
+	if code != 0 {
+		return &macOSExitError{Code: code}
+	}
 
 	select {
-	case err := <-r.ready:
+	case err := <-errCh:
+		if err == context.Canceled {
+			return nil
+		}
 		return err
-	case <-ctx.Done():
-		return ctx.Err()
+	default:
+		return nil
 	}
 }
 
@@ -98,23 +143,7 @@ func (r *MacOSAppKit) Viewport() (width int, height int, ok bool) {
 
 func (r *MacOSAppKit) Close() error {
 	C.pawlayer_macos_quit(C.uintptr_t(r.handle))
-	<-r.done
-	macOSRegistry.Delete(r.handle)
 	return nil
-}
-
-func (r *MacOSAppKit) runAppKit(initialWidth int, initialHeight int) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	defer close(r.done)
-
-	code := int(C.pawlayer_macos_run(C.uintptr_t(r.handle), C.int(initialWidth), C.int(initialHeight)))
-	if code != 0 {
-		select {
-		case r.ready <- &macOSExitError{Code: code}:
-		default:
-		}
-	}
 }
 
 //export pawlayerMacOSReady
@@ -126,7 +155,10 @@ func pawlayerMacOSReady(handle C.uintptr_t, width C.int, height C.int) {
 	r := value.(*MacOSAppKit)
 	r.setViewport(int(width), int(height))
 	r.log.Info("renderer.macos_appkit_ready", "click_through", true, "transparent", true)
-	r.ready <- nil
+	select {
+	case r.ready <- nil:
+	default:
+	}
 }
 
 //export pawlayerMacOSViewportChanged
