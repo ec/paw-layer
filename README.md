@@ -113,7 +113,7 @@ app:
   debug: true
 
 renderer:
-  backend: gtk4-layer-shell
+  backend: gtk4-layer-shell # macOS: macos-appkit
   click_through: true
   transparent: true
 

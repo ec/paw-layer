@@ -7,6 +7,8 @@ hyprland:
   use_events: true
 
 renderer:
+  # Linux/Hyprland: gtk4-layer-shell
+  # macOS: macos-appkit
   backend: gtk4-layer-shell
   layer: overlay
   click_through: true

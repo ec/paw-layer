@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build darwin && !cgo
 
 package platform
 
@@ -18,12 +18,8 @@ func NewDesktopProvider(cfg config.Config, log *slog.Logger) (desktop.Provider, 
 }
 
 func NewRenderer(cfg config.Config, log *slog.Logger) (renderer.Renderer, error) {
-	switch cfg.Renderer.Backend {
-	case "fake":
+	if cfg.Renderer.Backend == "fake" {
 		return renderer.NewFake(log), nil
-	case "macos-appkit", "native":
-		return renderer.NewMacOSAppKit(log), nil
-	default:
-		return nil, fmt.Errorf("unsupported renderer backend %q on macos", cfg.Renderer.Backend)
 	}
+	return nil, fmt.Errorf("macOS renderer %q requires cgo/AppKit", cfg.Renderer.Backend)
 }
