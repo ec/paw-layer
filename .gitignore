@@ -1,5 +1,6 @@
 # Build outputs
 /paw-layer
+/pawlayerctl
 *.test
 *.out
 

@@ -48,17 +48,18 @@ go run ./cmd/paw-layer run --config configs/default.yaml
 
 Stop with `Ctrl-C`.
 
-Build a local binary:
+Build local binaries:
 
 ```bash
 go build -o paw-layer ./cmd/paw-layer
+go build -o pawlayerctl ./cmd/pawlayerctl
 ./paw-layer run --config configs/default.yaml
 ```
 
 ## Commands
 
 ```bash
-# Run the cat
+# Run the cat in the foreground
 go run ./cmd/paw-layer run --config configs/default.yaml
 
 # Validate config
@@ -70,6 +71,35 @@ go run ./cmd/paw-layer list-windows
 ```
 
 `debug-overlay` is reserved but not implemented yet.
+
+## pawlayerctl
+
+`pawlayerctl` is a small process-control utility for daily use:
+
+```bash
+# Start in the background
+pawlayerctl start --config configs/default.yaml
+
+# Check state
+pawlayerctl status
+
+# Stop the running cat
+pawlayerctl stop
+
+# Restart with the current/default config
+pawlayerctl restart --config configs/default.yaml
+
+# View logs
+pawlayerctl logs
+pawlayerctl logs -f
+```
+
+Runtime files:
+
+- PID: `$XDG_RUNTIME_DIR/paw-layer/paw-layer.pid` or `/tmp/paw-layer-$UID/paw-layer/paw-layer.pid`
+- Log: `$XDG_STATE_HOME/paw-layer/paw-layer.log` or `~/.local/state/paw-layer/paw-layer.log`
+
+By default `pawlayerctl start` looks for `paw-layer` next to itself, then in `PATH`, then as `./paw-layer`. In a source checkout it can fall back to `go run ./cmd/paw-layer ...`. Use `--binary /path/to/paw-layer` to force a specific binary.
 
 ## Configuration
 
