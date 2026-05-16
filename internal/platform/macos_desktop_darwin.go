@@ -6,16 +6,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ec/paw-layer/internal/desktop"
 )
 
-type macOSDesktopProvider struct{}
+type macOSDesktopProvider struct {
+	log *slog.Logger
 
-func (macOSDesktopProvider) Monitors(ctx context.Context) ([]desktop.Monitor, error) {
+	mu               sync.RWMutex
+	activeWindow     *desktop.Window
+	activeWindowErr  error
+	activeRefreshAt  time.Time
+	activeRefreshing bool
+}
+
+func newMacOSDesktopProvider(log *slog.Logger) *macOSDesktopProvider {
+	return &macOSDesktopProvider{log: log}
+}
+
+func (p *macOSDesktopProvider) Monitors(ctx context.Context) ([]desktop.Monitor, error) {
 	out, err := exec.CommandContext(ctx, "osascript", "-e", `tell application "Finder" to get bounds of window of desktop`).Output()
 	if err != nil {
 		return nil, err
@@ -52,15 +67,47 @@ func (macOSDesktopProvider) Monitors(ctx context.Context) ([]desktop.Monitor, er
 	}}, nil
 }
 
-func (macOSDesktopProvider) Clients(ctx context.Context) ([]desktop.Window, error) {
-	active, err := macOSDesktopProvider{}.ActiveWindow(ctx)
+func (p *macOSDesktopProvider) Clients(ctx context.Context) ([]desktop.Window, error) {
+	active, err := p.ActiveWindow(ctx)
 	if err != nil || active == nil {
 		return nil, err
 	}
 	return []desktop.Window{*active}, nil
 }
 
-func (macOSDesktopProvider) ActiveWindow(ctx context.Context) (*desktop.Window, error) {
+func (p *macOSDesktopProvider) ActiveWindow(ctx context.Context) (*desktop.Window, error) {
+	_ = ctx
+	now := time.Now()
+
+	p.mu.Lock()
+	if now.After(p.activeRefreshAt) && !p.activeRefreshing {
+		p.activeRefreshing = true
+		p.activeRefreshAt = now.Add(750 * time.Millisecond)
+		go p.refreshActiveWindow()
+	}
+	window := cloneWindow(p.activeWindow)
+	err := p.activeWindowErr
+	p.mu.Unlock()
+
+	return window, err
+}
+
+func (p *macOSDesktopProvider) refreshActiveWindow() {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	window, err := queryMacOSActiveWindow(ctx)
+	p.mu.Lock()
+	p.activeWindow = cloneWindow(window)
+	p.activeWindowErr = err
+	p.activeRefreshing = false
+	p.mu.Unlock()
+	if err != nil && p.log != nil {
+		p.log.Debug("macos.active_window_refresh_failed", "error", err)
+	}
+}
+
+func queryMacOSActiveWindow(ctx context.Context) (*desktop.Window, error) {
 	out, err := exec.CommandContext(ctx, "osascript", "-e", activeWindowScript).Output()
 	if err != nil {
 		return nil, err
@@ -99,24 +146,17 @@ func (macOSDesktopProvider) ActiveWindow(ctx context.Context) (*desktop.Window, 
 	}, nil
 }
 
-func (macOSDesktopProvider) Cursor(ctx context.Context) (*desktop.Cursor, error) {
-	out, err := exec.CommandContext(ctx, "osascript", "-e", cursorPositionScript).Output()
-	if err != nil {
-		return nil, err
+func (p *macOSDesktopProvider) Cursor(ctx context.Context) (*desktop.Cursor, error) {
+	_ = ctx
+	return nativeMacOSCursor()
+}
+
+func cloneWindow(window *desktop.Window) *desktop.Window {
+	if window == nil {
+		return nil
 	}
-	parts := strings.Split(strings.TrimSpace(string(out)), ",")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("parse cursor position %q", strings.TrimSpace(string(out)))
-	}
-	x, err := parseAppleScriptInt(parts[0])
-	if err != nil {
-		return nil, err
-	}
-	y, err := parseAppleScriptInt(parts[1])
-	if err != nil {
-		return nil, err
-	}
-	return &desktop.Cursor{X: x, Y: y}, nil
+	clone := *window
+	return &clone
 }
 
 func parseAppleScriptInt(value string) (int, error) {
@@ -135,12 +175,4 @@ tell application "System Events"
   end tell
 end tell
 return "{\"app\":\"" & appName & "\",\"title\":\"" & windowTitle & "\",\"x\":" & item 1 of windowPosition & ",\"y\":" & item 2 of windowPosition & ",\"width\":" & item 1 of windowSize & ",\"height\":" & item 2 of windowSize & "}"
-`
-
-const cursorPositionScript = `
-use framework "Foundation"
-use framework "CoreGraphics"
-set mouseLoc to current application's NSEvent's mouseLocation()
-set mainScreenHeight to ((current application's NSScreen's mainScreen())'s frame())'s size's height
-return ((mouseLoc's x) as integer) & "," & ((mainScreenHeight - (mouseLoc's y)) as integer)
 `

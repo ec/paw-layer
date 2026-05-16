@@ -107,6 +107,11 @@ func (a *App) runLoop(ctx context.Context) error {
 		case now := <-ticker.C:
 			dt := now.Sub(last).Seconds()
 			last = now
+			// Native desktop APIs can occasionally stall a tick. Cap dt so one slow
+			// poll does not turn into a visible teleport/jump.
+			if dt > 1.0/15.0 {
+				dt = 1.0 / 15.0
+			}
 			boundsWidth = a.currentBoundsWidth(boundsWidth, catCfg.Scale)
 			viewportHeight := a.currentViewportHeight(currentMonitor.Height)
 			bottomInset := a.cfg.Behavior.BottomEdgeInset

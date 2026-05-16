@@ -44,7 +44,7 @@ The macOS backend should behave analogously to Linux, but use native Apple APIs:
 - overlay behavior: borderless transparent always-on-top panel
 - input behavior: `ignoresMouseEvents = true`
 - monitor geometry: native screen APIs; current fallback uses AppleScript/Finder desktop bounds
-- cursor position: CoreGraphics/AppKit; current fallback uses AppleScript + Foundation/CoreGraphics
+- cursor position: native CoreGraphics through cgo
 - active/frontmost window geometry: Accessibility API and/or `CGWindowList`; current fallback uses System Events and requires Accessibility permission
 - fullscreen detection: window/screen state from Accessibility/CoreGraphics where available
 
