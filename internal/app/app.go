@@ -10,13 +10,13 @@ import (
 	"github.com/ec/paw-layer/internal/cat"
 	"github.com/ec/paw-layer/internal/config"
 	"github.com/ec/paw-layer/internal/desktop"
-	"github.com/ec/paw-layer/internal/hyprland"
 	"github.com/ec/paw-layer/internal/physics"
 	"github.com/ec/paw-layer/internal/renderer"
 )
 
 type App struct {
 	cfg      config.Config
+	desktop  desktop.Provider
 	renderer renderer.Renderer
 	log      *slog.Logger
 }
@@ -28,8 +28,8 @@ type monitorTransition struct {
 	enter  physics.Vec2
 }
 
-func New(cfg config.Config, r renderer.Renderer, log *slog.Logger) *App {
-	return &App{cfg: cfg, renderer: r, log: log}
+func New(cfg config.Config, desktopProvider desktop.Provider, r renderer.Renderer, log *slog.Logger) *App {
+	return &App{cfg: cfg, desktop: desktopProvider, renderer: r, log: log}
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -62,7 +62,6 @@ func (a *App) Run(ctx context.Context) error {
 		boundsWidth = 800
 	}
 
-	hypr := hyprland.NewHyprctl()
 	currentMonitor := monitor
 	var activeWindow *desktop.Window
 	var cursor *desktop.Cursor
@@ -103,7 +102,7 @@ func (a *App) Run(ctx context.Context) error {
 			bottomInset := a.cfg.Behavior.BottomEdgeInset
 
 			if now.After(nextDesktopPoll) {
-				if nextCursor, err := hypr.Cursor(ctx); err == nil {
+				if nextCursor, err := a.desktop.Cursor(ctx); err == nil {
 					if lastCursor == nil || nextCursor.X != lastCursor.X || nextCursor.Y != lastCursor.Y {
 						lastCursorMove = now
 						if wasSleeping {
@@ -114,12 +113,12 @@ func (a *App) Run(ctx context.Context) error {
 					cursor = nextCursor
 					lastCursor = nextCursor
 				} else {
-					a.log.DebugContext(ctx, "hyprland.cursor_unavailable", "error", err)
+					a.log.DebugContext(ctx, "desktop.cursor_unavailable", "error", err)
 				}
 
-				window, err := hypr.ActiveWindow(ctx)
+				window, err := a.desktop.ActiveWindow(ctx)
 				if err != nil {
-					a.log.DebugContext(ctx, "hyprland.active_window_unavailable", "error", err)
+					a.log.DebugContext(ctx, "desktop.active_window_unavailable", "error", err)
 				} else {
 					activeWindow = window
 					if window != nil && !transition.active {
@@ -220,9 +219,9 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 func (a *App) detectInitialMonitor(ctx context.Context) desktop.Monitor {
-	monitors, err := hyprland.NewHyprctl().Monitors(ctx)
+	monitors, err := a.desktop.Monitors(ctx)
 	if err != nil {
-		a.log.WarnContext(ctx, "hyprland.monitors_unavailable", "error", err, "fallback_width", 800, "fallback_height", 600)
+		a.log.WarnContext(ctx, "desktop.monitors_unavailable", "error", err, "fallback_width", 800, "fallback_height", 600)
 		return desktop.Monitor{Width: 800, Height: 600}
 	}
 
@@ -297,9 +296,9 @@ func spriteWidth(scale float64) float64  { return 32 * scale }
 func spriteHeight(scale float64) float64 { return 32 * scale }
 
 func (a *App) monitorForWindow(ctx context.Context, window desktop.Window) (desktop.Monitor, bool) {
-	monitors, err := hyprland.NewHyprctl().Monitors(ctx)
+	monitors, err := a.desktop.Monitors(ctx)
 	if err != nil {
-		a.log.DebugContext(ctx, "hyprland.monitors_unavailable", "error", err)
+		a.log.DebugContext(ctx, "desktop.monitors_unavailable", "error", err)
 		return desktop.Monitor{}, false
 	}
 	if len(monitors) == 0 {

@@ -187,10 +187,13 @@ configs/                  sample config
 docs/                     specs and reference notes
 ```
 
-Renderer design:
+Platform / renderer design:
 
 - Go core owns behavior and state.
-- GTK renderer is intentionally dumb: draw current frame, switch monitor, report viewport.
+- Native platform backends expose desktop state through `desktop.Provider`.
+- Linux currently uses Hyprland/`hyprctl` plus GTK4 layer-shell.
+- macOS support is planned as an AppKit/CoreGraphics backend; see [`docs/PLATFORMS.md`](docs/PLATFORMS.md).
+- Renderers are intentionally dumb: draw current frame, switch monitor when supported, report viewport.
 - GTK integration uses a small direct C bridge instead of gotk4 to keep generated cgo noise and dependencies low.
 
 ## Behavior priority

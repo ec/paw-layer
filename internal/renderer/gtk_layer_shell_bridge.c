@@ -1,3 +1,5 @@
+//go:build linux
+
 #include "gtk_layer_shell_bridge.h"
 
 static void pawlayer_make_click_through(GtkWindow *window) {

@@ -1,3 +1,5 @@
+//go:build linux
+
 #pragma once
 
 #include <stdint.h>
