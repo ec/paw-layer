@@ -9,11 +9,16 @@ typedef struct {
     double scale;
     int direction_right;
     int visible;
+    int tile_width;
+    int tile_height;
+    int frame;
 } PawLayerCatState;
 
 @interface PawLayerView : NSView
 @property(nonatomic, assign) uintptr_t handle;
 @property(nonatomic, assign) PawLayerCatState cat;
+@property(nonatomic, copy) NSString *spritePath;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSImage *> *imageCache;
 @end
 
 @implementation PawLayerView
@@ -38,6 +43,35 @@ typedef struct {
     CGFloat s = cat.scale > 0 ? cat.scale : 1.0;
     CGFloat x = cat.x;
     CGFloat y = cat.y;
+
+    if (self.spritePath != nil && cat.tile_width > 0 && cat.tile_height > 0) {
+        if (self.imageCache == nil) {
+            self.imageCache = [NSMutableDictionary dictionary];
+        }
+        NSImage *image = self.imageCache[self.spritePath];
+        if (image == nil) {
+            image = [[NSImage alloc] initWithContentsOfFile:self.spritePath];
+            if (image != nil) {
+                self.imageCache[self.spritePath] = image;
+            }
+        }
+        if (image != nil) {
+            [NSGraphicsContext saveGraphicsState];
+            [[NSGraphicsContext currentContext] setImageInterpolation:NSImageInterpolationNone];
+            NSRect dst = NSMakeRect(x, y, cat.tile_width * s, cat.tile_height * s);
+            if (!cat.direction_right) {
+                NSAffineTransform *transform = [NSAffineTransform transform];
+                [transform translateXBy:(x + cat.tile_width * s) yBy:0];
+                [transform scaleXBy:-1 yBy:1];
+                [transform concat];
+                dst = NSMakeRect(0, y, cat.tile_width * s, cat.tile_height * s);
+            }
+            NSRect src = NSMakeRect(cat.frame * cat.tile_width, 0, cat.tile_width, cat.tile_height);
+            [image drawInRect:dst fromRect:src operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:nil];
+            [NSGraphicsContext restoreGraphicsState];
+            return;
+        }
+    }
 
     void (^rect)(CGFloat, CGFloat, CGFloat, CGFloat, NSColor *) = ^(CGFloat px, CGFloat py, CGFloat w, CGFloat h, NSColor *color) {
         [color setFill];
@@ -159,8 +193,35 @@ void pawlayer_macos_set_cat(uintptr_t handle, double x, double y, double scale, 
             .scale = scale,
             .direction_right = direction_right,
             .visible = visible,
+            .tile_width = 0,
+            .tile_height = 0,
+            .frame = 0,
         };
         delegate.view.cat = cat;
+        delegate.view.spritePath = nil;
+        [delegate.view setNeedsDisplay:YES];
+    });
+}
+
+void pawlayer_macos_set_sprite(uintptr_t handle, const char *path, double x, double y, double scale, int tile_width, int tile_height, int frame, int direction_right, int visible) {
+    NSString *spritePath = path != NULL ? [NSString stringWithUTF8String:path] : nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        PawLayerAppDelegate *delegate = pawlayer_delegates()[@(handle)];
+        if (delegate == nil || delegate.view == nil) {
+            return;
+        }
+        PawLayerCatState cat = {
+            .x = x,
+            .y = y,
+            .scale = scale,
+            .direction_right = direction_right,
+            .visible = visible,
+            .tile_width = tile_width,
+            .tile_height = tile_height,
+            .frame = frame,
+        };
+        delegate.view.cat = cat;
+        delegate.view.spritePath = spritePath;
         [delegate.view setNeedsDisplay:YES];
     });
 }

@@ -14,9 +14,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
+
+	"github.com/ec/paw-layer/internal/assets"
 )
 
 type MacOSAppKit struct {
@@ -29,6 +33,7 @@ type MacOSAppKit struct {
 
 	mu             sync.RWMutex
 	latest         Frame
+	assets         *macOSSpriteStore
 	viewportWidth  int
 	viewportHeight int
 }
@@ -55,6 +60,13 @@ func (r *MacOSAppKit) Init(ctx context.Context, cfg Config) error {
 }
 
 func (r *MacOSAppKit) RunMain(ctx context.Context, cfg Config, runApp func(context.Context) error) error {
+	store, err := loadMacOSSpriteStore(cfg.AssetsPath)
+	if err != nil {
+		r.log.Warn("renderer.macos_sprite_store_unavailable", "error", err)
+	} else {
+		r.assets = store
+	}
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	defer close(r.done)
@@ -128,8 +140,88 @@ func (r *MacOSAppKit) Draw(ctx context.Context, frame Frame) error {
 	if cat.Visible {
 		visible = 1
 	}
+	if sprite, ok := r.spriteFor(cat); ok {
+		path := C.CString(sprite.path)
+		defer C.free(unsafe.Pointer(path))
+		C.pawlayer_macos_set_sprite(C.uintptr_t(r.handle), path, C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(sprite.tileWidth), C.int(sprite.tileHeight), C.int(sprite.frame), C.int(directionRight), C.int(visible))
+		return nil
+	}
+
 	C.pawlayer_macos_set_cat(C.uintptr_t(r.handle), C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(directionRight), C.int(visible))
 	return nil
+}
+
+type macOSSpriteStore struct {
+	packs map[string]macOSSpritePack
+}
+
+type macOSSpritePack struct {
+	manifest assets.Manifest
+	paths    map[string]string
+}
+
+type macOSSprite struct {
+	path       string
+	tileWidth  int
+	tileHeight int
+	frame      int
+}
+
+func loadMacOSSpriteStore(root string) (*macOSSpriteStore, error) {
+	if root == "" {
+		root = "./assets/cats"
+	}
+	entries, err := filepath.Glob(filepath.Join(root, "*", "manifest.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	store := &macOSSpriteStore{packs: make(map[string]macOSSpritePack)}
+	for _, manifestPath := range entries {
+		manifest, err := assets.LoadManifest(manifestPath)
+		if err != nil {
+			continue
+		}
+		packDir := filepath.Dir(manifestPath)
+		pack := macOSSpritePack{manifest: manifest, paths: make(map[string]string)}
+		for name, anim := range manifest.Animations {
+			pack.paths[name] = filepath.Join(packDir, anim.File)
+		}
+		store.packs[filepath.Base(packDir)] = pack
+		store.packs[manifest.Name] = pack
+	}
+	if len(store.packs) == 0 {
+		return nil, fmt.Errorf("no sprite packs found in %s", root)
+	}
+	return store, nil
+}
+
+func (r *MacOSAppKit) spriteFor(cat CatRenderState) (macOSSprite, bool) {
+	r.mu.RLock()
+	store := r.assets
+	r.mu.RUnlock()
+	if store == nil {
+		return macOSSprite{}, false
+	}
+	pack, ok := store.packs[cat.SpritePack]
+	if !ok {
+		return macOSSprite{}, false
+	}
+	anim, ok := pack.manifest.Animations[cat.Sprite]
+	if !ok {
+		return macOSSprite{}, false
+	}
+	path, ok := pack.paths[cat.Sprite]
+	if !ok || path == "" {
+		return macOSSprite{}, false
+	}
+	frame := cat.Frame
+	if anim.Frames > 0 {
+		frame %= anim.Frames
+	}
+	if frame < 0 {
+		frame = 0
+	}
+	return macOSSprite{path: path, tileWidth: pack.manifest.TileWidth, tileHeight: pack.manifest.TileHeight, frame: frame}, true
 }
 
 func (r *MacOSAppKit) Viewport() (width int, height int, ok bool) {
