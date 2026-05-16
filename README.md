@@ -4,6 +4,8 @@ Pixel desktop cats for Hyprland / Wayland.
 
 `paw-layer` is a small Go desktop companion app. A pixel cat lives in a transparent click-through layer-shell overlay, follows the active Hyprland window, sits on it, reacts to the cursor, sleeps after inactivity, and can move between monitors.
 
+![paw-layer pixel cat screenshot](docs/images/paw-layer-screenshot.png)
+
 > Status: early MVP / technical playground. Linux + Hyprland only for now.
 
 ## Features
