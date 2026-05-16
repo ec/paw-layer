@@ -43,15 +43,16 @@ The macOS backend should behave analogously to Linux, but use native Apple APIs:
 - renderer: AppKit `NSWindow`
 - overlay behavior: borderless transparent always-on-top panel
 - input behavior: `ignoresMouseEvents = true`
-- monitor geometry: native screen APIs; current fallback uses AppleScript/Finder desktop bounds
-- cursor position: CoreGraphics/AppKit; current fallback uses AppleScript + Foundation/CoreGraphics
+- monitor geometry: native CoreGraphics display bounds
+- cursor position: native CoreGraphics through cgo
 - active/frontmost window geometry: Accessibility API and/or `CGWindowList`; current fallback uses System Events and requires Accessibility permission
 - fullscreen detection: window/screen state from Accessibility/CoreGraphics where available
 
 Current macOS MVP status:
 
 - `renderer.backend: macos-appkit` creates a native transparent click-through AppKit overlay.
-- The first renderer draws the built-in fallback pixel cat; PNG sprite pack rendering is still Linux-only.
+- Do not run it with `sudo`: macOS GUI overlays must run in the logged-in user's WindowServer session.
+- The AppKit renderer draws PNG sprite packs from the shared manifest format; it falls back to the built-in pixel cat if assets are unavailable.
 - The desktop provider uses AppleScript fallbacks for initial behavior parity, then should be replaced with direct CoreGraphics/Accessibility calls.
 - macOS builds with `CGO_ENABLED=1` are required for the native AppKit renderer. `CGO_ENABLED=0` builds keep command compatibility but cannot run the native renderer.
 

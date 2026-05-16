@@ -13,8 +13,7 @@ import (
 
 func NewDesktopProvider(cfg config.Config, log *slog.Logger) (desktop.Provider, error) {
 	_ = cfg
-	_ = log
-	return macOSDesktopProvider{}, nil
+	return newMacOSDesktopProvider(log), nil
 }
 
 func NewRenderer(cfg config.Config, log *slog.Logger) (renderer.Renderer, error) {
