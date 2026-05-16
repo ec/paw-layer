@@ -140,6 +140,7 @@ int pawlayer_macos_run(uintptr_t handle, int initial_width, int initial_height) 
         delegate.initialHeight = initial_height;
         pawlayer_delegates()[@(handle)] = delegate;
         [app setDelegate:delegate];
+        [app finishLaunching];
         [app run];
         [pawlayer_delegates() removeObjectForKey:@(handle)];
     }
