@@ -91,7 +91,7 @@ func (r *GTKLayerShell) Draw(ctx context.Context, frame Frame) error {
 	r.mu.Unlock()
 
 	if area != nil {
-		C.hyprcats_gtk_queue_draw(area)
+		C.pawlayer_gtk_queue_draw(area)
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func (r *GTKLayerShell) SwitchMonitor(name string, width int, height int) error 
 	}
 
 	cname := C.CString(name)
-	C.hyprcats_gtk_switch_monitor(window, area, cname, C.int(width), C.int(height))
+	C.pawlayer_gtk_switch_monitor(window, area, cname, C.int(width), C.int(height))
 	C.free(unsafe.Pointer(cname))
 
 	r.mu.Lock()
@@ -147,7 +147,7 @@ func (r *GTKLayerShell) Close() error {
 	r.mu.RUnlock()
 
 	if app != nil {
-		C.hyprcats_gtk_quit(app)
+		C.pawlayer_gtk_quit(app)
 	}
 
 	<-r.done
@@ -167,7 +167,7 @@ func (r *GTKLayerShell) runGTK() {
 	defer runtime.UnlockOSThread()
 	defer close(r.done)
 
-	code := int(C.hyprcats_gtk_run(C.uintptr_t(r.handle), C.int(r.initialWidth), C.int(r.initialHeight)))
+	code := int(C.pawlayer_gtk_run(C.uintptr_t(r.handle), C.int(r.initialWidth), C.int(r.initialHeight)))
 	if code != 0 {
 		select {
 		case r.ready <- &ExitError{Code: code}:
@@ -176,8 +176,8 @@ func (r *GTKLayerShell) runGTK() {
 	}
 }
 
-//export hyprcatsGTKReady
-func hyprcatsGTKReady(handle C.uintptr_t, app *C.GtkApplication, window *C.GtkWidget, drawingArea *C.GtkWidget) {
+//export pawlayerGTKReady
+func pawlayerGTKReady(handle C.uintptr_t, app *C.GtkApplication, window *C.GtkWidget, drawingArea *C.GtkWidget) {
 	value, ok := gtkRegistry.Load(uintptr(handle))
 	if !ok {
 		return
@@ -195,8 +195,8 @@ func hyprcatsGTKReady(handle C.uintptr_t, app *C.GtkApplication, window *C.GtkWi
 	r.ready <- nil
 }
 
-//export hyprcatsGTKDraw
-func hyprcatsGTKDraw(handle C.uintptr_t, cr *C.cairo_t, width C.int, height C.int) {
+//export pawlayerGTKDraw
+func pawlayerGTKDraw(handle C.uintptr_t, cr *C.cairo_t, width C.int, height C.int) {
 	value, ok := gtkRegistry.Load(uintptr(handle))
 	if !ok {
 		return

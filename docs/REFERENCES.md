@@ -59,7 +59,7 @@ Potentially useful later:
 - speech bubbles as purely visual non-focus overlays
 - 8-direction sprite manifest extension
 
-## Direction for hyprcats
+## Direction for paw-layer
 
 Keep the core product narrower than both references:
 

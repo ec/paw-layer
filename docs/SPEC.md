@@ -1,4 +1,4 @@
-# hyprcats project spec
+# paw-layer project spec
 
 ## Goal
 
@@ -70,12 +70,12 @@ Renderer responsibilities:
 - draw sprites
 - avoid business logic
 
-Initial process model is a single binary: `hyprcats`. Future split can introduce `hyprcats-daemon`, `hyprcats-renderer`, and `hyprcatsctl`.
+Initial process model is a single binary: `paw-layer`. Future split can introduce `paw-layer-daemon`, `paw-layer-renderer`, and `paw-layerctl`.
 
 ## Package layout
 
 ```text
-cmd/hyprcats/              CLI entrypoint
+cmd/paw-layer/              CLI entrypoint
 internal/app/              orchestration and main loop
 internal/config/           config loading/validation
 internal/hyprland/         Hyprland client and event parsing

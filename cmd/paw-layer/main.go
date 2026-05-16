@@ -112,6 +112,6 @@ func listMonitors() error {
 }
 
 func usage() error {
-	fmt.Fprintln(os.Stderr, "usage: hyprcats <run|validate-config|list-windows|list-monitors|debug-overlay>")
+	fmt.Fprintln(os.Stderr, "usage: paw-layer <run|validate-config|list-windows|list-monitors|debug-overlay>")
 	return errors.New("invalid command")
 }

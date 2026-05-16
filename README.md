@@ -1,49 +1,47 @@
-# hyprcats
+# paw-layer
 
 Pixel desktop cats for Hyprland / Wayland.
 
-`hyprcats` is a small Go desktop companion: a pixel cat lives in a transparent click-through layer-shell overlay, follows the active Hyprland window, sits on it, reacts to the cursor, sleeps after inactivity, and can move between monitors.
+`paw-layer` is a small Go desktop companion app. A pixel cat lives in a transparent click-through layer-shell overlay, follows the active Hyprland window, sits on it, reacts to the cursor, sleeps after inactivity, and can move between monitors.
 
-## Status
+> Status: early MVP / technical playground. Linux + Hyprland only for now.
 
-Early MVP / technical playground.
+## Features
 
-Working:
-
-- GTK4 + `gtk4-layer-shell` transparent overlay
-- click-through input region
-- PNG spritesheet rendering
-- active-window tracking via `hyprctl`
-- sit on active window top center
-- hide on fullscreen active window
-- cursor avoidance with hysteresis
-- sleep after cursor inactivity
-- multi-monitor follow with edge-transition behavior
-- basic CLI config validation and Hyprland inspection commands
+- Transparent GTK4 + `gtk4-layer-shell` overlay
+- Click-through input region, including after monitor switches
+- PNG spritesheet renderer with multiple sprite packs
+- Active-window tracking via `hyprctl`
+- Cat sits on the active window top edge
+- Cat hides when the active window is fullscreen
+- Cursor avoidance with hysteresis
+- Sleep routine after cursor inactivity
+- Wake/startle, blink, tail-flick, and short wander micro-actions
+- Screen-frame movement: walk along the bottom edge, climb vertically to windows
+- Multi-monitor follow with edge-transition behavior
+- CLI commands for config validation and Hyprland inspection
 
 ## Requirements
-
-Runtime/build dependencies:
 
 - Go 1.25+
 - Hyprland
 - `hyprctl`
-- GTK4 development package
-- `gtk4-layer-shell` development package
-- pkg-config
+- GTK4 development files
+- `gtk4-layer-shell` development files
+- `pkg-config`
 
-On Arch-like systems, the relevant packages are typically:
+On Arch Linux / Omarchy-like systems:
 
 ```bash
 sudo pacman -S go gtk4 gtk4-layer-shell pkgconf
 ```
 
-## Run
-
-From the repo root:
+## Quick start
 
 ```bash
-go run ./cmd/hyprcats run --config configs/default.yaml
+git clone https://github.com/ec/paw-layer.git
+cd paw-layer
+go run ./cmd/paw-layer run --config configs/default.yaml
 ```
 
 Stop with `Ctrl-C`.
@@ -51,20 +49,22 @@ Stop with `Ctrl-C`.
 Build a local binary:
 
 ```bash
-go build -o hyprcats ./cmd/hyprcats
-./hyprcats run --config configs/default.yaml
+go build -o paw-layer ./cmd/paw-layer
+./paw-layer run --config configs/default.yaml
 ```
 
 ## Commands
 
 ```bash
-go run ./cmd/hyprcats run --config configs/default.yaml
+# Run the cat
+go run ./cmd/paw-layer run --config configs/default.yaml
 
-go run ./cmd/hyprcats validate-config --config configs/default.yaml
+# Validate config
+go run ./cmd/paw-layer validate-config --config configs/default.yaml
 
-go run ./cmd/hyprcats list-monitors
-
-go run ./cmd/hyprcats list-windows
+# Inspect Hyprland state
+go run ./cmd/paw-layer list-monitors
+go run ./cmd/paw-layer list-windows
 ```
 
 `debug-overlay` is reserved but not implemented yet.
@@ -73,7 +73,7 @@ go run ./cmd/hyprcats list-windows
 
 Default config: [`configs/default.yaml`](configs/default.yaml)
 
-Important knobs:
+Important options:
 
 ```yaml
 app:
@@ -87,7 +87,7 @@ renderer:
 
 cats:
   - name: Miso
-    sprite_pack: default
+    sprite_pack: black
     scale: 3
     speed: 180
 
@@ -95,94 +95,152 @@ behavior:
   sleep_after_sec: 5
   cursor_avoid_radius: 140
   cursor_run_speed: 320
+  bottom_edge_inset: 80
 ```
 
 Notes:
 
-- `sleep_after_sec: 5` is intentionally low for testing. Raise it later for normal use.
-- The config parser is intentionally minimal right now and supports only the current shape.
-- `cats[].behaviors` is present in config but not yet used as a real behavior toggle system.
+- `sleep_after_sec: 5` is intentionally low for testing. Raise it for normal daily use.
+- `bottom_edge_inset` controls how far above the physical bottom edge the cat walks.
+- The config parser is intentionally minimal and supports the current config shape only.
+- `cats[].behaviors` exists in the config but is not yet a real toggle system.
 
-## Assets
+## Sprite packs
 
-Default sprite pack:
+Current packs:
 
 ```text
-assets/cats/default/
-  manifest.yaml
-  idle.png
-  walk.png
-  sit.png
-  sleep.png
-  peek.png
+assets/cats/black/       black cat
+assets/cats/seal-point/  light seal-point style cat
+assets/cats/default/     current default asset copy
 ```
 
-The current default style is a black pixel cat with yellow eyes, pink ears, and a red collar.
+Each pack contains:
 
-`peek.png` exists but runtime peek behavior is disabled for now.
+```text
+manifest.yaml
+idle.png
+walk.png
+sit.png
+sleep.png
+climb.png
+blink.png
+tail_flick.png
+wake.png
+peek.png
+```
+
+Switch pack in config:
+
+```yaml
+cats:
+  - sprite_pack: seal-point
+```
+
+`peek.png` exists for future use, but runtime peek behavior is currently disabled.
 
 ## Architecture
 
-High-level packages:
-
 ```text
-cmd/hyprcats/          CLI entrypoint
-internal/app/          main loop and behavior orchestration
-internal/cat/          cat state and movement primitives
-internal/hyprland/     hyprctl-backed desktop state
-internal/desktop/      monitor/window/cursor models
-internal/renderer/     renderer protocol + GTK layer-shell backend
-internal/assets/       sprite manifest loading
-internal/physics/      vector helpers
+cmd/paw-layer/            CLI entrypoint
+internal/app/             main loop and behavior orchestration
+internal/cat/             cat state and movement primitives
+internal/hyprland/        hyprctl-backed desktop state
+internal/desktop/         monitor/window/cursor models
+internal/renderer/        renderer protocol + GTK layer-shell backend
+internal/assets/          sprite manifest loading
+internal/physics/         vector helpers
+assets/cats/              sprite packs
+configs/                  sample config
+docs/                     specs and reference notes
 ```
 
 Renderer design:
 
 - Go core owns behavior and state.
 - GTK renderer is intentionally dumb: draw current frame, switch monitor, report viewport.
-- GTK integration is a small direct C bridge, not gotk4, to avoid noisy generated cgo warnings and keep the renderer narrow.
+- GTK integration uses a small direct C bridge instead of gotk4 to keep generated cgo noise and dependencies low.
 
-## Current behavior priority
+## Behavior priority
 
 Per tick, behavior roughly resolves as:
 
 1. monitor transition
-2. sleep after cursor inactivity
+2. sleep routine / wake animation
 3. cursor avoidance
-4. active-window fullscreen hide
-5. sit on active window
-6. wander fallback
+4. random wander break
+5. active-window fullscreen hide
+6. frame-path movement to active window and sit
+7. bottom-edge wander fallback
 
-## Known issues / limitations
+## Known limitations
 
 - Multi-monitor movement is not truly continuous across outputs. The cat walks to the edge, the layer surface switches monitor, then the cat enters from the corresponding edge.
-- Real seamless cross-monitor walking likely needs one layer-shell surface per monitor or a different renderer strategy.
-- Hyprland state currently uses polling + `hyprctl`; direct IPC/event socket is still future work.
+- True seamless cross-monitor walking likely needs one layer-shell surface per monitor or a different renderer strategy.
+- Hyprland state currently uses polling + `hyprctl`; direct IPC/event sockets are future work.
 - The config parser is hand-rolled and minimal.
-- Sprite art is generated/prototype quality, not final hand-drawn art.
+- Sprite art is prototype-quality pixel art.
 - No packaging yet.
 - No tray or control socket yet.
+
+## Development
+
+Run checks:
+
+```bash
+go test ./...
+go run ./cmd/paw-layer validate-config --config configs/default.yaml
+go build ./cmd/paw-layer
+```
+
+Before changing behavior, prefer small iterations: run the app, observe motion, then tune constants/config.
 
 ## Roadmap
 
 Near-term:
 
-- better behavior toggles from config
-- stable window tracking when windows move/resize
-- cleaner animation timing tied to movement speed
-- more polished sprite pack
-- config defaults for real use, not test tuning
+- behavior toggles from config
+- stable tracking when windows move/resize
+- animation timing tied to movement speed
+- better hand-drawn sprite packs
+- normal-use config defaults instead of test tuning
 
 Later:
 
 - direct Hyprland IPC/events
 - multiple cats
 - hot config reload
-- proper theme/sprite pack format
-- tray / `hyprcatsctl`
+- persisted position/monitor state
+- tray / `paw-layerctl`
 - packaging / AUR
+
+## Contributing
+
+This project is still early, but contributions are welcome.
+
+Good first contributions:
+
+- better sprite packs
+- config parser cleanup
+- Hyprland IPC/event support
+- packaging
+- behavior tuning
+
+Please keep changes small and test with:
+
+```bash
+go test ./...
+go run ./cmd/paw-layer validate-config --config configs/default.yaml
+```
+
+## Security / privacy
+
+`paw-layer` reads local Hyprland state via `hyprctl` and renders a local overlay. It does not require network access at runtime.
+
+## License
+
+No license has been selected yet. Until a license is added, all rights are reserved by default.
 
 ## References
 
 See [`docs/REFERENCES.md`](docs/REFERENCES.md).
-# paw-layer

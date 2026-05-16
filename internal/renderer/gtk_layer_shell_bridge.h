@@ -6,10 +6,10 @@
 #include <cairo.h>
 #include <gtk4-layer-shell.h>
 
-int hyprcats_gtk_run(uintptr_t handle, int initial_width, int initial_height);
-void hyprcats_gtk_queue_draw(GtkWidget *widget);
-void hyprcats_gtk_quit(GtkApplication *app);
-void hyprcats_gtk_switch_monitor(GtkWidget *window, GtkWidget *drawing_area, const char *connector, int width, int height);
+int pawlayer_gtk_run(uintptr_t handle, int initial_width, int initial_height);
+void pawlayer_gtk_queue_draw(GtkWidget *widget);
+void pawlayer_gtk_quit(GtkApplication *app);
+void pawlayer_gtk_switch_monitor(GtkWidget *window, GtkWidget *drawing_area, const char *connector, int width, int height);
 
-extern void hyprcatsGTKReady(uintptr_t handle, GtkApplication *app, GtkWidget *window, GtkWidget *drawing_area);
-extern void hyprcatsGTKDraw(uintptr_t handle, cairo_t *cr, int width, int height);
+extern void pawlayerGTKReady(uintptr_t handle, GtkApplication *app, GtkWidget *window, GtkWidget *drawing_area);
+extern void pawlayerGTKDraw(uintptr_t handle, cairo_t *cr, int width, int height);
