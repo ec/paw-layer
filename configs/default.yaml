@@ -1,0 +1,36 @@
+app:
+  tick_rate: 30
+  debug: true
+
+hyprland:
+  poll_interval_ms: 500
+  use_events: true
+
+renderer:
+  backend: gtk4-layer-shell
+  layer: overlay
+  click_through: true
+  transparent: true
+
+cats:
+  - id: default
+    name: Miso
+    sprite_pack: black
+    scale: 3
+    speed: 180
+    behaviors:
+      - wander
+      - sit_on_active_window
+      - avoid_cursor
+
+behavior:
+  idle_min_sec: 3
+  idle_max_sec: 12
+  sleep_after_sec: 5
+  cursor_avoid_radius: 140
+  cursor_run_speed: 320
+  bottom_edge_inset: 80
+  window_edge_padding: 8
+
+assets:
+  path: ./assets/cats
