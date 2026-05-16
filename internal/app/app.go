@@ -34,7 +34,7 @@ func New(cfg config.Config, desktopProvider desktop.Provider, r renderer.Rendere
 
 func (a *App) Run(ctx context.Context) error {
 	monitor := a.detectInitialMonitor(ctx)
-	if err := a.renderer.Init(ctx, renderer.Config{
+	rendererCfg := renderer.Config{
 		Backend:       a.cfg.Renderer.Backend,
 		Layer:         a.cfg.Renderer.Layer,
 		ClickThrough:  a.cfg.Renderer.ClickThrough,
@@ -42,7 +42,13 @@ func (a *App) Run(ctx context.Context) error {
 		AssetsPath:    a.cfg.Assets.Path,
 		InitialWidth:  monitor.Width,
 		InitialHeight: monitor.Height,
-	}); err != nil {
+	}
+
+	if mainThreadRunner, ok := a.renderer.(renderer.MainThreadRunner); ok {
+		return mainThreadRunner.RunMain(ctx, rendererCfg, a.runLoop)
+	}
+
+	if err := a.renderer.Init(ctx, rendererCfg); err != nil {
 		return err
 	}
 	defer func() {
@@ -50,7 +56,11 @@ func (a *App) Run(ctx context.Context) error {
 			a.log.WarnContext(ctx, "renderer.close_failed", "error", err)
 		}
 	}()
+	return a.runLoop(ctx)
+}
 
+func (a *App) runLoop(ctx context.Context) error {
+	monitor := a.detectInitialMonitor(ctx)
 	catCfg := a.cfg.Cats[0]
 	miso := cat.New(catCfg.ID, catCfg.Name, catCfg.Speed, catCfg.Scale)
 	// Start visible; once GTK reports the real viewport, the pathing code will
@@ -97,6 +107,11 @@ func (a *App) Run(ctx context.Context) error {
 		case now := <-ticker.C:
 			dt := now.Sub(last).Seconds()
 			last = now
+			// Native desktop APIs can occasionally stall a tick. Cap dt so one slow
+			// poll does not turn into a visible teleport/jump.
+			if dt > 1.0/15.0 {
+				dt = 1.0 / 15.0
+			}
 			boundsWidth = a.currentBoundsWidth(boundsWidth, catCfg.Scale)
 			viewportHeight := a.currentViewportHeight(currentMonitor.Height)
 			bottomInset := a.cfg.Behavior.BottomEdgeInset

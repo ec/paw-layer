@@ -14,9 +14,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
+
+	"github.com/ec/paw-layer/internal/assets"
 )
 
 type MacOSAppKit struct {
@@ -24,12 +28,12 @@ type MacOSAppKit struct {
 
 	ready chan error
 	done  chan struct{}
-	once  sync.Once
 
 	handle uintptr
 
 	mu             sync.RWMutex
 	latest         Frame
+	assets         *macOSSpriteStore
 	viewportWidth  int
 	viewportHeight int
 }
@@ -52,15 +56,68 @@ func NewMacOSAppKit(log *slog.Logger) *MacOSAppKit {
 }
 
 func (r *MacOSAppKit) Init(ctx context.Context, cfg Config) error {
-	r.once.Do(func() {
-		go r.runAppKit(cfg.InitialWidth, cfg.InitialHeight)
-	})
+	return fmt.Errorf("macOS AppKit renderer must run through RunMain")
+}
+
+func (r *MacOSAppKit) RunMain(ctx context.Context, cfg Config, runApp func(context.Context) error) error {
+	store, err := loadMacOSSpriteStore(cfg.AssetsPath)
+	if err != nil {
+		r.log.Warn("renderer.macos_sprite_store_unavailable", "error", err)
+	} else {
+		r.assets = store
+	}
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	defer close(r.done)
+	defer macOSRegistry.Delete(r.handle)
+
+	appCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		select {
+		case err := <-r.ready:
+			if err != nil {
+				errCh <- err
+				cancel()
+				C.pawlayer_macos_quit(C.uintptr_t(r.handle))
+				return
+			}
+		case <-appCtx.Done():
+			errCh <- appCtx.Err()
+			return
+		}
+
+		if err := runApp(appCtx); err != nil {
+			errCh <- err
+		} else {
+			errCh <- nil
+		}
+		cancel()
+		C.pawlayer_macos_quit(C.uintptr_t(r.handle))
+	}()
+
+	go func() {
+		<-appCtx.Done()
+		C.pawlayer_macos_quit(C.uintptr_t(r.handle))
+	}()
+
+	r.log.Info("renderer.macos_appkit_run_main", "width", cfg.InitialWidth, "height", cfg.InitialHeight)
+	code := int(C.pawlayer_macos_run(C.uintptr_t(r.handle), C.int(cfg.InitialWidth), C.int(cfg.InitialHeight)))
+	if code != 0 {
+		return &macOSExitError{Code: code}
+	}
 
 	select {
-	case err := <-r.ready:
+	case err := <-errCh:
+		if err == context.Canceled {
+			return nil
+		}
 		return err
-	case <-ctx.Done():
-		return ctx.Err()
+	default:
+		return nil
 	}
 }
 
@@ -83,8 +140,88 @@ func (r *MacOSAppKit) Draw(ctx context.Context, frame Frame) error {
 	if cat.Visible {
 		visible = 1
 	}
+	if sprite, ok := r.spriteFor(cat); ok {
+		path := C.CString(sprite.path)
+		defer C.free(unsafe.Pointer(path))
+		C.pawlayer_macos_set_sprite(C.uintptr_t(r.handle), path, C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(sprite.tileWidth), C.int(sprite.tileHeight), C.int(sprite.frame), C.int(directionRight), C.int(visible))
+		return nil
+	}
+
 	C.pawlayer_macos_set_cat(C.uintptr_t(r.handle), C.double(cat.X), C.double(cat.Y), C.double(cat.Scale), C.int(directionRight), C.int(visible))
 	return nil
+}
+
+type macOSSpriteStore struct {
+	packs map[string]macOSSpritePack
+}
+
+type macOSSpritePack struct {
+	manifest assets.Manifest
+	paths    map[string]string
+}
+
+type macOSSprite struct {
+	path       string
+	tileWidth  int
+	tileHeight int
+	frame      int
+}
+
+func loadMacOSSpriteStore(root string) (*macOSSpriteStore, error) {
+	if root == "" {
+		root = "./assets/cats"
+	}
+	entries, err := filepath.Glob(filepath.Join(root, "*", "manifest.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	store := &macOSSpriteStore{packs: make(map[string]macOSSpritePack)}
+	for _, manifestPath := range entries {
+		manifest, err := assets.LoadManifest(manifestPath)
+		if err != nil {
+			continue
+		}
+		packDir := filepath.Dir(manifestPath)
+		pack := macOSSpritePack{manifest: manifest, paths: make(map[string]string)}
+		for name, anim := range manifest.Animations {
+			pack.paths[name] = filepath.Join(packDir, anim.File)
+		}
+		store.packs[filepath.Base(packDir)] = pack
+		store.packs[manifest.Name] = pack
+	}
+	if len(store.packs) == 0 {
+		return nil, fmt.Errorf("no sprite packs found in %s", root)
+	}
+	return store, nil
+}
+
+func (r *MacOSAppKit) spriteFor(cat CatRenderState) (macOSSprite, bool) {
+	r.mu.RLock()
+	store := r.assets
+	r.mu.RUnlock()
+	if store == nil {
+		return macOSSprite{}, false
+	}
+	pack, ok := store.packs[cat.SpritePack]
+	if !ok {
+		return macOSSprite{}, false
+	}
+	anim, ok := pack.manifest.Animations[cat.Sprite]
+	if !ok {
+		return macOSSprite{}, false
+	}
+	path, ok := pack.paths[cat.Sprite]
+	if !ok || path == "" {
+		return macOSSprite{}, false
+	}
+	frame := cat.Frame
+	if anim.Frames > 0 {
+		frame %= anim.Frames
+	}
+	if frame < 0 {
+		frame = 0
+	}
+	return macOSSprite{path: path, tileWidth: pack.manifest.TileWidth, tileHeight: pack.manifest.TileHeight, frame: frame}, true
 }
 
 func (r *MacOSAppKit) Viewport() (width int, height int, ok bool) {
@@ -98,23 +235,7 @@ func (r *MacOSAppKit) Viewport() (width int, height int, ok bool) {
 
 func (r *MacOSAppKit) Close() error {
 	C.pawlayer_macos_quit(C.uintptr_t(r.handle))
-	<-r.done
-	macOSRegistry.Delete(r.handle)
 	return nil
-}
-
-func (r *MacOSAppKit) runAppKit(initialWidth int, initialHeight int) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	defer close(r.done)
-
-	code := int(C.pawlayer_macos_run(C.uintptr_t(r.handle), C.int(initialWidth), C.int(initialHeight)))
-	if code != 0 {
-		select {
-		case r.ready <- &macOSExitError{Code: code}:
-		default:
-		}
-	}
 }
 
 //export pawlayerMacOSReady
@@ -126,7 +247,10 @@ func pawlayerMacOSReady(handle C.uintptr_t, width C.int, height C.int) {
 	r := value.(*MacOSAppKit)
 	r.setViewport(int(width), int(height))
 	r.log.Info("renderer.macos_appkit_ready", "click_through", true, "transparent", true)
-	r.ready <- nil
+	select {
+	case r.ready <- nil:
+	default:
+	}
 }
 
 //export pawlayerMacOSViewportChanged
